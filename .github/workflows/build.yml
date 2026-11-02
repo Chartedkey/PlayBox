@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -58,7 +57,14 @@ jobs:
           path: PlayBox-windows.zip
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" PlayBox-windows.zip --title "PlayBox $GITHUB_REF_NAME" --generate-notes
+        run: |
+          version=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
+          test -n "$version"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists"
+          else
+            gh release create "v$version" PlayBox-windows.zip --target "$GITHUB_SHA" --title "PlayBox v$version" --generate-notes
+          fi

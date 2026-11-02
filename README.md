@@ -22,4 +22,4 @@ assets/
 ## Разработка
 
 - Тесты: `godot --headless --path . --script res://tests/run_tests.gd`
-- Каждый push собирает версию для Windows, а тег `v*` публикует релиз.
+- Каждый push в `main` собирает версию для Windows. Релиз публикуется автоматически, когда меняется `config/version` в `project.godot`.
