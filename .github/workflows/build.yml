@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +38,22 @@ jobs:
           unzip -q /tmp/tpl.tpz -d /tmp/tpl
           mv /tmp/tpl/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
 
+      - name: Install icon tools
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends wine wine64 xvfb
+          curl -fsSL -o ~/rcedit.exe https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.3.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/windows/rcedit = "$HOME/rcedit.exe"
+          export/windows/wine = "$(command -v wine)"
+          EOF
+          sed -i 's/^ *//' ~/.config/godot/editor_settings-4.3.tres
+
       - name: Import project
         run: ~/godot/godot --headless --path . --import
 
@@ -47,8 +63,9 @@ jobs:
       - name: Export for Windows
         run: |
           mkdir -p build
-          ~/godot/godot --headless --path . --export-release "Windows" build/PlayBox.exe
+          xvfb-run -a ~/godot/godot --headless --path . --export-release "Windows" build/PlayBox.exe
           test -f build/PlayBox.exe
+          python3 tools/check_icon.py build/PlayBox.exe icon.ico
           (cd build && zip -q ../PlayBox-windows.zip PlayBox.exe)
 
       - uses: actions/upload-artifact@v4

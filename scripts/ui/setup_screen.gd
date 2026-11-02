@@ -9,6 +9,13 @@ var _fields := {}
 var _dialog: FileDialog
 var _pending := Callable()
 
+const SECRETS := [
+	["ra_user", "RetroAchievements: логин", false],
+	["ra_key", "RetroAchievements: Web API", true],
+	["sgdb_key", "SteamGridDB: ключ", true],
+	["deepseek_key", "DeepSeek: ключ", true],
+]
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -21,7 +28,7 @@ func _ready() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var box := VBoxContainer.new()
 	box.custom_minimum_size = Vector2(1100, 0)
-	box.add_theme_constant_override("separation", 22)
+	box.add_theme_constant_override("separation", 10)
 	center.add_child(box)
 	var title := Label.new()
 	title.text = "Настройка PlayBox"
@@ -40,6 +47,14 @@ func _ready() -> void:
 		box.add_child(head)
 		_fields[id + "_emu"] = _row(box, "Файл эмулятора", config.emulator(id), func(): _pick_file(id))
 		_fields[id + "_dir"] = _row(box, "Папка с играми", config.games_folder(id), func(): _pick_dir(id))
+	var keys_head := Label.new()
+	keys_head.text = "Необязательно: ключи хранятся только на этом компьютере"
+	keys_head.add_theme_font_size_override("font_size", 26)
+	box.add_child(keys_head)
+	for k in SECRETS:
+		var e := _row(box, k[1], config.secret(k[0]), Callable())
+		e.secret = k[2]
+		_fields["key_" + k[0]] = e
 	var save := Button.new()
 	save.text = "Готово"
 	save.custom_minimum_size = Vector2(240, 60)
@@ -60,7 +75,7 @@ func _row(parent: Control, label: String, value: String, on_browse: Callable) ->
 	row.add_theme_constant_override("separation", 12)
 	var l := Label.new()
 	l.text = label
-	l.custom_minimum_size = Vector2(220, 0)
+	l.custom_minimum_size = Vector2(330, 0)
 	l.add_theme_font_size_override("font_size", 20)
 	row.add_child(l)
 	var e := LineEdit.new()
@@ -68,11 +83,12 @@ func _row(parent: Control, label: String, value: String, on_browse: Callable) ->
 	e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	e.add_theme_font_size_override("font_size", 20)
 	row.add_child(e)
-	var b := Button.new()
-	b.text = "Обзор"
-	b.add_theme_font_size_override("font_size", 20)
-	b.pressed.connect(on_browse)
-	row.add_child(b)
+	if on_browse.is_valid():
+		var b := Button.new()
+		b.text = "Обзор"
+		b.add_theme_font_size_override("font_size", 20)
+		b.pressed.connect(on_browse)
+		row.add_child(b)
 	parent.add_child(row)
 	return e
 
@@ -99,5 +115,7 @@ func _on_save() -> void:
 	for id in Consoles.IDS:
 		config.set_emulator(id, _fields[id + "_emu"].text.strip_edges())
 		config.set_games_folder(id, _fields[id + "_dir"].text.strip_edges())
+	for k in SECRETS:
+		config.set_secret(k[0], _fields["key_" + k[0]].text.strip_edges())
 	config.save()
 	done.emit()

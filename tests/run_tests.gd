@@ -131,5 +131,54 @@ func _init() -> void:
 	eq(UpdateChecker.is_newer("v0.1.0", "0.1.0"), false, "same")
 	eq(UpdateChecker.is_newer("0.1.10", "0.1.9"), true, "numeric")
 
+	# Трофеи RPCS3
+	var tr := PackedByteArray()
+	tr.resize(48 + 32 * 2 + 3 * 0x70)
+	tr.encode_u32(0, 0xAD548F81) # big-endian 0x818F54AD
+	tr[11] = 2
+	tr[48 + 3] = 4
+	var t6 := 48 + 32
+	tr[t6 + 3] = 6
+	tr[t6 + 7] = 0x60
+	tr[t6 + 15] = 3
+	tr[t6 + 23] = 48 + 64
+	tr[48 + 64 + 0x70 + 23] = 1
+	eq(TrophyReader.parse(tr), {"earned": 1, "total": 3}, "trophies")
+	eq(TrophyReader.parse(PackedByteArray([1, 2, 3])), {}, "trophies bad file")
+	_touch(p3.path_join("Disc/PS3_GAME/TROPDIR/NPWR01234_00/TROPHY.TRP"))
+	eq(TrophyReader.comm_id(p3.path_join("Disc/PS3_GAME/USRDIR/EBOOT.BIN")), "NPWR01234_00", "comm id")
+
+	# RetroAchievements
+	var ra := [{"ID": 5, "Title": "~Hack~ God of War"}, {"ID": 7, "Title": "God of War | Kratos"}]
+	eq(Achievements.match_game("God of War", ra), 7, "ra match")
+	eq(Achievements.match_game("Nope", ra), 0, "ra none")
+	eq(Achievements.console_id([{"ID": 21, "Name": "PlayStation 2"}], "PlayStation 2"), 21, "ra console")
+
+	# DeepSeek
+	eq(SettingsAdvisor.search_query("x".repeat(200), "RPCS3").length(), 128, "query limit")
+	eq(SettingsAdvisor.parse_reply('{"choices":[{"message":{"content":"ок"}}]}'), "ок", "reply")
+	eq(SettingsAdvisor.parse_reply("плохо"), "", "bad reply")
+	eq(SettingsAdvisor.build_prompt("G", "E", "H", [{"title": "T", "url": "U", "summary": "S"}]).size(), 2, "prompt")
+
+	# Обновление: архив, проверка и замена файлов
+	var ud := root.path_join("upd")
+	DirAccess.make_dir_recursive_absolute(ud)
+	var exe := ud.path_join("PlayBox.exe")
+	_touch(exe, "OLD")
+	var zp := ZIPPacker.new()
+	zp.open(ud.path_join("ok.zip"))
+	zp.start_file("PlayBox.exe")
+	zp.write_file("MZ-new-version".to_utf8_buffer())
+	zp.close_file()
+	zp.close()
+	eq(UpdateInstaller.extract(ud.path_join("ok.zip"), UpdateInstaller.new_path(exe), 4), OK, "extract")
+	eq(UpdateInstaller.extract(ud.path_join("ok.zip"), ud.path_join("x.exe")) != OK, true, "too small rejected")
+	eq(UpdateInstaller.swap(exe), OK, "swap")
+	eq(FileAccess.get_file_as_string(exe), "MZ-new-version", "swap new")
+	eq(FileAccess.get_file_as_string(UpdateInstaller.old_path(exe)), "OLD", "swap old kept")
+	UpdateInstaller.cleanup(exe)
+	eq(FileAccess.file_exists(UpdateInstaller.old_path(exe)), false, "cleanup")
+	eq(UpdateChecker.find_asset({"assets": [{"name": "PlayBox-windows.zip", "size": 9}]}).get("size"), 9, "asset")
+
 	print("Проверок: %d, ошибок: %d" % [checks, failures])
 	quit(1 if failures > 0 else 0)

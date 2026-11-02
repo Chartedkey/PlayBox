@@ -1,7 +1,7 @@
 extends Node3D
 ## Переходы между экранами: коробки приставок → полка → запуск игры.
 
-enum State { BOOT, SETUP, CONSOLES, OPENING, SHELF, LAUNCHING, RUNNING }
+enum State { BOOT, SETUP, CONSOLES, OPENING, SHELF, LAUNCHING, RUNNING, PANEL }
 
 const BOX_SPACING := 1.75
 const CASE_SPACING := 1.05
@@ -13,6 +13,19 @@ var studio: Studio
 var launcher: EmulatorLauncher
 var covers: CoverService
 var updater: UpdateChecker
+var installer: UpdateInstaller
+var achievements: Achievements
+var advisor: SettingsAdvisor
+var sfx: Sfx
+var update_button: Button
+var _update_url := ""
+var _update_size := 0
+var _updating := false
+var _achievement_text := ""
+var _idle_time := 0.0
+var panel: PanelContainer
+var panel_text: RichTextLabel
+var _panel_raw := ""
 
 var boxes: Array[ConsoleBox] = []
 var selected_box := 0
@@ -50,6 +63,19 @@ func _ready() -> void:
 	updater = UpdateChecker.new()
 	updater.update_available.connect(_on_update)
 	add_child(updater)
+	installer = UpdateInstaller.new()
+	installer.progress.connect(_on_update_progress)
+	add_child(installer)
+	achievements = Achievements.new()
+	achievements.config = config
+	add_child(achievements)
+	advisor = SettingsAdvisor.new()
+	add_child(advisor)
+	sfx = Sfx.new()
+	add_child(sfx)
+	covers.sgdb_key = config.secret("sgdb_key")
+	if OS.has_feature("template"):
+		UpdateInstaller.cleanup(OS.get_executable_path())
 	_build_ui()
 	_build_boxes()
 	updater.check()
@@ -77,6 +103,22 @@ func _build_ui() -> void:
 	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(fade)
 	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	update_button = Button.new()
+	update_button.visible = false
+	update_button.add_theme_font_size_override("font_size", 22)
+	update_button.position = Vector2(1480, 60)
+	update_button.pressed.connect(_start_update)
+	ui.add_child(update_button)
+	panel = PanelContainer.new()
+	panel.visible = false
+	panel.position = Vector2(260, 140)
+	panel.custom_minimum_size = Vector2(1400, 800)
+	ui.add_child(panel)
+	panel_text = RichTextLabel.new()
+	panel_text.add_theme_font_size_override("normal_font_size", 24)
+	panel_text.custom_minimum_size = Vector2(1400, 800)
+	panel_text.scroll_following = false
+	panel.add_child(panel_text)
 	image_dialog = FileDialog.new()
 	image_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	image_dialog.use_native_dialog = true
@@ -116,8 +158,42 @@ func _set_texts(title: String, info: String, hint: String) -> void:
 	hint_label.text = hint
 
 
-func _on_update(version: String, _url: String) -> void:
+func _on_update(version: String, url: String, size: int) -> void:
+	# Заменить файл умеет только собранная программа.
 	notice_label.text = "Доступна новая версия %s" % version
+	if not OS.has_feature("template"):
+		return
+	_update_url = url
+	_update_size = size
+	update_button.text = "Обновить до %s (U)" % version
+	update_button.visible = true
+
+
+func _on_update_progress(fraction: float) -> void:
+	notice_label.text = "Скачивание обновления: %d%%" % int(fraction * 100.0)
+
+
+func _start_update() -> void:
+	if _updating or _update_url == "" or launcher.is_running():
+		return
+	_updating = true
+	update_button.disabled = true
+	var exe := OS.get_executable_path()
+	var error := await installer.install(_update_url, _update_size, exe)
+	if error != "":
+		notice_label.text = error
+		_updating = false
+		update_button.disabled = false
+		return
+	notice_label.text = "Обновление установлено. Перезапуск..."
+	OS.create_process(exe, [])
+	get_tree().quit()
+
+
+func _process(delta: float) -> void:
+	if state == State.SHELF and active_box:
+		_idle_time += delta
+		active_box.console_sprite().offset.y = sin(_idle_time * 1.2) * 8.0
 
 
 # --- Экран приставок ---
@@ -144,6 +220,7 @@ func _enter_consoles() -> void:
 
 
 func _highlight_box() -> void:
+	sfx.play("move")
 	var t := create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	for i in boxes.size():
 		var s := 1.12 if i == selected_box else 0.94
@@ -167,15 +244,18 @@ func _open_selected_box() -> void:
 	t.tween_property(active_box, "position", Vector3(0, -0.2, 0), 0.5)
 	t.tween_property(active_box, "scale", Vector3.ONE * 1.12, 0.5)
 	await t.finished
+	sfx.play("open")
 	var o := create_tween().set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
 	o.tween_method(active_box.set_open, 0.0, 1.0, 0.7)
-	o.tween_method(active_box.set_rise, 0.0, 1.0, 1.1)
+	o.tween_method(active_box.set_rise, 0.0, 1.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await o.finished
 	await get_tree().create_timer(0.25).timeout
 	_enter_shelf()
 
 
 func _close_box() -> void:
+	sfx.play("back")
+	active_box.console_sprite().offset.y = 0.0
 	_clear_cases()
 	state = State.OPENING
 	var t := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
@@ -255,12 +335,59 @@ func _layout_cases(duration: float) -> void:
 
 
 func _refresh_shelf_text() -> void:
-	var hint := "← → игра    Enter / A играть    Esc / B назад    C обложка    D диск    N добавить игру"
+	var hint := "← → игра    Enter / A играть    Esc / B назад    G / X настройки игры    C обложка    D диск    N добавить игру"
 	if cases.is_empty():
 		_set_texts("Игры не найдены", "Проверьте папку в настройках или добавьте игру вручную.", "N добавить игру    S настройки    Esc / B назад")
 		return
 	var g: Dictionary = cases[selected_case].game
-	_set_texts(g["title"], "В игре: %s" % LibraryStore.format_time(library.seconds(g["id"])), hint)
+	_achievement_text = ""
+	_set_texts(g["title"], _shelf_info(g), hint)
+	_load_achievements(g)
+
+
+func _shelf_info(g: Dictionary) -> String:
+	var t := "В игре: %s" % LibraryStore.format_time(library.seconds(g["id"]))
+	return t + ("    •    " + _achievement_text if _achievement_text != "" else "")
+
+
+func _load_achievements(g: Dictionary) -> void:
+	var p: Dictionary = await achievements.progress(g)
+	if p.is_empty() or int(p.get("total", 0)) == 0:
+		return
+	if state != State.SHELF or cases.is_empty() or cases[selected_case].game["id"] != g["id"]:
+		return
+	var word := "Трофеи" if g["console"] == "ps3" else "Достижения"
+	_achievement_text = "%s: %d из %d" % [word, p["earned"], p["total"]]
+	info_label.text = _shelf_info(g)
+
+
+# --- Советы по настройкам ---
+
+func _open_advice() -> void:
+	if cases.is_empty():
+		return
+	var key := config.secret("deepseek_key")
+	var g: Dictionary = cases[selected_case].game
+	state = State.PANEL
+	panel.visible = true
+	_panel_raw = ""
+	if key == "":
+		panel_text.text = "Чтобы искать настройки, добавьте ключ DeepSeek в настройках (S).\n\nEsc / B закрыть"
+		return
+	panel_text.text = "Ищу настройки для «%s»...\nВ DeepSeek отправляются название игры, эмулятор, процессор и видеокарта." % g["title"]
+	var text := await advisor.advise(g, key)
+	if state != State.PANEL:
+		return
+	if text == "":
+		panel_text.text = "Не удалось получить советы. Проверьте ключ, баланс DeepSeek и интернет.\n\nEsc / B закрыть"
+		return
+	_panel_raw = text
+	panel_text.text = text + "\n\nПрограмма ничего не меняет сама. Enter / A скопировать    Esc / B закрыть"
+
+
+func _close_panel() -> void:
+	panel.visible = false
+	state = State.SHELF
 
 
 func _cover_for(game: Dictionary) -> Texture2D:
@@ -289,7 +416,10 @@ func _on_cover_ready(game_id: String, _path: String) -> void:
 func _move_case(delta: int) -> void:
 	if cases.is_empty():
 		return
+	var before := selected_case
 	selected_case = clampi(selected_case + delta, 0, cases.size() - 1)
+	if selected_case != before:
+		sfx.play("move")
 	_layout_cases(0.3)
 	_refresh_shelf_text()
 
@@ -333,6 +463,7 @@ func _launch_selected() -> void:
 	if cases.is_empty():
 		return
 	state = State.LAUNCHING
+	sfx.play("disc")
 	var c := cases[selected_case]
 	_set_texts(c.game["title"], "", "")
 	var t := create_tween().set_parallel().set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
@@ -381,6 +512,16 @@ func _return_from_game() -> void:
 # --- Управление ---
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _key(event, KEY_U) and state in [State.CONSOLES, State.SHELF]:
+		_start_update()
+		return
+	if state == State.PANEL:
+		if event.is_action_pressed("ui_cancel"):
+			_close_panel()
+		elif event.is_action_pressed("ui_accept") and _panel_raw != "":
+			DisplayServer.clipboard_set(_panel_raw)
+			panel_text.text = _panel_raw + "\n\nСкопировано. Esc / B закрыть"
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_on_click(event.position)
 		return
@@ -413,6 +554,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_launch_selected()
 			elif event.is_action_pressed("ui_cancel"):
 				_close_box()
+			elif _key(event, KEY_G) or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_X):
+				_open_advice()
 			elif _key(event, KEY_C):
 				_choose_image("cover")
 			elif _key(event, KEY_D):

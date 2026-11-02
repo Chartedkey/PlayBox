@@ -36,6 +36,14 @@ func launch_args(console: String) -> Array:
 	return _cfg.get_value(console, "args", Consoles.info(console)["args"])
 
 
+func secret(name: String) -> String:
+	return _cfg.get_value("keys", name, "")
+
+
+func set_secret(name: String, value: String) -> void:
+	_cfg.set_value("keys", name, value)
+
+
 func is_console_ready(console: String) -> bool:
 	return emulator(console) != "" and FileAccess.file_exists(emulator(console))
 

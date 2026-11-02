@@ -5,7 +5,9 @@ config/name="PlayBox"
 config/description="Оболочка для эмуляторов PS1, PS2 и PS3"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
-config/version="0.1.0"
+config/version="0.2.0"
+config/icon="res://icon.png"
+config/windows_native_icon="res://icon.ico"
 
 [display]
 window/size/viewport_width=1920
