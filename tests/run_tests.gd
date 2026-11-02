@@ -129,7 +129,7 @@ func _init() -> void:
 	eq(ps2.size() > 5000, true, "index loaded")
 	eq(CoverMatcher.best_match("Def.Jam.Fight.for.NY.2004.PS2", GameScanner.clean_title("Def.Jam.Fight.for.NY.2004.PS2"), "", ps2), "Def Jam - Fight for NY (USA)", "dotted match")
 	eq(CoverMatcher.best_match("Dead to Rights", "Dead to Rights", "", ps2), "Dead to Rights (USA)", "plain match")
-	eq(CoverService.urls_for("ps2", "God of War (USA)")[1], "https://raw.githubusercontent.com/libretro-thumbnails/Sony_-_PlayStation_2/master/Named_Boxarts/God%20of%20War%20(USA).png", "github url")
+	eq(CoverService.urls_for("ps2", "God of War (USA)")[1], "https://raw.githubusercontent.com/libretro-thumbnails/Sony_-_PlayStation_2/master/Named_Boxarts/God%20of%20War%20%28USA%29.png", "github url")
 	eq(CoverMatcher.is_png(PackedByteArray([0x89, 0x50, 0x4E, 0x47, 13, 10, 26, 10, 0])), true, "png")
 	eq(CoverMatcher.is_png("<html>".to_utf8_buffer()), false, "not png")
 
