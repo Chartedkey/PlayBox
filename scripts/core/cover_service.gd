@@ -68,8 +68,8 @@ static func urls_for(console: String, name: String) -> PackedStringArray:
 	var system: String = info["libretro"]
 	var repo := system.replace(" ", "_")
 	return PackedStringArray([
-		"https://thumbnails.libretro.com/%s/Named_Boxarts/%s" % [system.uri_encode(), file],
 		"https://raw.githubusercontent.com/libretro-thumbnails/%s/master/Named_Boxarts/%s" % [repo, file],
+		"https://thumbnails.libretro.com/%s/Named_Boxarts/%s" % [system.uri_encode(), file],
 	])
 
 
