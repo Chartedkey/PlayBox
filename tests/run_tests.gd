@@ -124,7 +124,14 @@ func _init() -> void:
 	eq(CoverMatcher.best_match("God of War (Europe)", "God of War", "Europe", listing), "God of War (Europe)", "cover region")
 	eq(CoverMatcher.best_match("Unknown", "Unknown", "", listing), "", "cover none")
 	eq(CoverMatcher.sanitize("Q*bert: A/B"), "Q_bert_ A_B", "sanitize")
-	eq(CoverMatcher.parse_listing('<a href="God%20of%20War%20(USA).png">x</a>'), PackedStringArray(["God of War (USA)"]), "listing")
+	eq(GameScanner.clean_title("Def.Jam.Fight.for.NY.2004.PS2"), "Def Jam Fight for NY", "dotted name")
+	var ps2 := CoverMatcher.load_index("ps2")
+	eq(ps2.size() > 5000, true, "index loaded")
+	eq(CoverMatcher.best_match("Def.Jam.Fight.for.NY.2004.PS2", GameScanner.clean_title("Def.Jam.Fight.for.NY.2004.PS2"), "", ps2), "Def Jam - Fight for NY (USA)", "dotted match")
+	eq(CoverMatcher.best_match("Dead to Rights", "Dead to Rights", "", ps2), "Dead to Rights (USA)", "plain match")
+	eq(CoverService.urls_for("ps2", "God of War (USA)")[1], "https://raw.githubusercontent.com/libretro-thumbnails/Sony_-_PlayStation_2/master/Named_Boxarts/God%20of%20War%20(USA).png", "github url")
+	eq(CoverMatcher.is_png(PackedByteArray([0x89, 0x50, 0x4E, 0x47, 13, 10, 26, 10, 0])), true, "png")
+	eq(CoverMatcher.is_png("<html>".to_utf8_buffer()), false, "not png")
 
 	# Обновления
 	eq(UpdateChecker.is_newer("v0.2.0", "0.1.0"), true, "newer")

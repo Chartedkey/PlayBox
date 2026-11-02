@@ -152,6 +152,7 @@ func open_setup() -> void:
 func _on_setup_done() -> void:
 	setup_screen.queue_free()
 	setup_screen = null
+	covers.sgdb_key = config.secret("sgdb_key")
 	_clear_cases()
 	_enter_consoles()
 
@@ -351,6 +352,8 @@ func _refresh_shelf_text() -> void:
 
 func _shelf_info(g: Dictionary) -> String:
 	var t := "В игре: %s" % LibraryStore.format_time(library.seconds(g["id"]))
+	if _cover_for(g) == null:
+		t += "    •    Обложки нет: C выбрать свою"
 	return t + ("    •    " + _achievement_text if _achievement_text != "" else "")
 
 
@@ -415,6 +418,8 @@ func _on_cover_ready(game_id: String, _path: String) -> void:
 	for c in cases:
 		if c.game["id"] == game_id:
 			c.set_images(_cover_for(c.game), _disc_for(c.game))
+	if state == State.SHELF and not cases.is_empty() and cases[selected_case].game["id"] == game_id:
+		info_label.text = _shelf_info(cases[selected_case].game)
 
 
 func _move_case(delta: int) -> void:

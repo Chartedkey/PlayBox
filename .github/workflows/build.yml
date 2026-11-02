@@ -60,6 +60,10 @@ jobs:
       - name: Run tests
         run: ~/godot/godot --headless --path . --script res://tests/run_tests.gd
 
+      - name: Check cover downloads
+        continue-on-error: true
+        run: ~/godot/godot --headless --path . --script res://tests/cover_net.gd
+
       - name: Export for Windows
         run: |
           mkdir -p build

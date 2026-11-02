@@ -28,7 +28,12 @@ static func make_game(console: String, file_path: String, raw_name: String, titl
 ## «God_of_War (USA) [SLUS-20778]» → «God of War»
 static func clean_title(raw: String) -> String:
 	var re := RegEx.create_from_string("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]")
-	var t := re.sub(raw, "", true).replace("_", " ").strip_edges()
+	var t := re.sub(raw, "", true).replace("_", " ")
+	# Имена вида Def.Jam.Fight.for.NY.2004.PS2
+	if t.count(".") >= 2 and not t.contains(" "):
+		t = t.replace(".", " ")
+	var tags := RegEx.create_from_string("(?i)(\\s+(19|20)\\d\\d|\\s+(PS1|PS2|PS3|PSX|PAL|NTSC|NTSC-U|NTSC-J|USA|EUR|RUS|ENG|REPACK|RIP|ISO))+\\s*$")
+	t = tags.sub(t, "").strip_edges()
 	return t if t != "" else raw
 
 

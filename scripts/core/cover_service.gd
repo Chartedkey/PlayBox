@@ -4,7 +4,7 @@ extends Node
 
 signal cover_ready(game_id: String, file_path: String)
 
-const BASE := "https://thumbnails.libretro.com/%s/Named_Boxarts/"
+const LOG := "user://covers.log"
 const CACHE_DIR := "user://covers"
 const SGDB := "https://www.steamgriddb.com/api/v2"
 
@@ -12,7 +12,7 @@ var sgdb_key := ""
 
 var _queue: Array[Dictionary] = []
 var _busy := false
-var _listings := {}
+var _indexes := {}
 
 
 func _ready() -> void:
@@ -35,19 +35,23 @@ func _next() -> void:
 		return
 	_busy = true
 	var game: Dictionary = _queue.pop_front()
-	var system: String = Consoles.info(game["console"])["libretro"]
-	if not _listings.has(system):
-		var body := await _fetch(_base_url(system))
-		_listings[system] = CoverMatcher.parse_listing(body.get_string_from_utf8())
-	var name := CoverMatcher.best_match(game["raw_name"], game["title"], game["region"], _listings[system])
-	# Если список не загрузился, пробуем точное имя файла.
-	if name == "" and _listings[system].is_empty():
-		name = game["raw_name"]
+	var console: String = game["console"]
+	if not _indexes.has(console):
+		_indexes[console] = CoverMatcher.load_index(console)
+	var name := CoverMatcher.best_match(game["raw_name"], game["title"], game["region"], _indexes[console])
 	var bytes := PackedByteArray()
 	if name != "":
-		bytes = await _fetch(_base_url(system) + CoverMatcher.sanitize(name).uri_encode() + ".png")
+		for url in urls_for(console, name):
+			bytes = await _fetch(url)
+			_log("%s -> %d байт: %s" % [game["title"], bytes.size(), url])
+			if CoverMatcher.is_png(bytes):
+				break
+			bytes = PackedByteArray()
+	else:
+		_log("%s: нет в списке обложек" % game["title"])
 	if bytes.is_empty() and sgdb_key != "":
 		bytes = await _fetch_sgdb(game["title"])
+		_log("%s: SteamGridDB -> %d байт" % [game["title"], bytes.size()])
 	if bytes.size() > 0:
 		var f := FileAccess.open(cache_path(game["id"]), FileAccess.WRITE)
 		if f:
@@ -58,8 +62,23 @@ func _next() -> void:
 	_next()
 
 
-func _base_url(system: String) -> String:
-	return BASE % system.uri_encode()
+static func urls_for(console: String, name: String) -> PackedStringArray:
+	var info := Consoles.info(console)
+	var file := name.uri_encode() + ".png"
+	var system: String = info["libretro"]
+	var repo := system.replace(" ", "_")
+	return PackedStringArray([
+		"https://thumbnails.libretro.com/%s/Named_Boxarts/%s" % [system.uri_encode(), file],
+		"https://raw.githubusercontent.com/libretro-thumbnails/%s/master/Named_Boxarts/%s" % [repo, file],
+	])
+
+
+func _log(line: String) -> void:
+	var mode := FileAccess.READ_WRITE if FileAccess.file_exists(LOG) else FileAccess.WRITE
+	var f := FileAccess.open(LOG, mode)
+	if f:
+		f.seek_end()
+		f.store_line(line)
 
 
 ## Запасной вариант: вертикальная обложка из SteamGridDB по названию игры.
@@ -89,8 +108,10 @@ func _fetch_converted(url: String) -> PackedByteArray:
 
 func _fetch(url: String, headers := PackedStringArray()) -> PackedByteArray:
 	var http := HTTPRequest.new()
-	http.timeout = 20.0
+	http.timeout = 25.0
+	http.max_redirects = 8
 	add_child(http)
+	headers.append("User-Agent: PlayBox")
 	if http.request(url, headers) != OK:
 		http.queue_free()
 		return PackedByteArray()

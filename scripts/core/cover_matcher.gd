@@ -13,6 +13,8 @@ static func sanitize(file_name: String) -> String:
 
 static func normalize(text: String) -> String:
 	var t := GameScanner.clean_title(text).to_lower().replace("&", "and")
+	if t.begins_with("the "):
+		t = t.substr(4)
 	var re := RegEx.create_from_string("[^\\p{L}\\p{N}]")
 	return re.sub(t, "", true)
 
@@ -36,9 +38,13 @@ static func best_match(raw_name: String, title: String, region: String, listing:
 	return candidates[0]
 
 
-static func parse_listing(html: String) -> PackedStringArray:
-	var out := PackedStringArray()
-	var re := RegEx.create_from_string("href=\"([^\"]+)\\.png\"")
-	for m in re.search_all(html):
-		out.append(m.get_string(1).uri_decode())
-	return out
+## Список известных обложек лежит внутри программы, поэтому поиск не зависит от сети.
+static func load_index(console: String) -> PackedStringArray:
+	var p := "res://data/covers_%s.txt" % console
+	if not FileAccess.file_exists(p):
+		return PackedStringArray()
+	return FileAccess.get_file_as_string(p).split("\n", false)
+
+
+static func is_png(bytes: PackedByteArray) -> bool:
+	return bytes.size() > 8 and bytes[0] == 0x89 and bytes[1] == 0x50 and bytes[2] == 0x4E and bytes[3] == 0x47
